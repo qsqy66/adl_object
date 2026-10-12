@@ -1,0 +1,80 @@
+# Operating system files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+!.env.development.example
+!.env.production.example
+
+# Logs and runtime files
+*.log
+logs/
+tmp/
+*.pid
+*.seed
+*.pid.lock
+
+# Frontend: Node.js / Vue / Vite
+node_modules/
+dist/
+dist-ssr/
+coverage/
+.eslintcache
+*.tsbuildinfo
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Frontend test artifacts
+cypress/videos/
+cypress/screenshots/
+__screenshots__/
+
+# Backend: Maven / Java
+target/
+*.class
+*.jar
+*.war
+*.ear
+hs_err_pid*
+
+# Maven wrapper downloaded binary
+backend/.mvn/wrapper/maven-wrapper.jar
+
+# IDEs and editors
+.idea/
+!.idea/.gitignore
+.vscode/
+!.vscode/extensions.json
+*.iml
+*.iws
+*.ipr
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build and tool caches
+.cache/
+.npm/
+.mvn/timing.properties
+
+# Local database and generated exports
+*.sql.gz
+*.dump
+*.sqlite
+*.sqlite3
+
+# OS-specific temporary files
+*.swp
+*.swo
+*~

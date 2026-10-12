@@ -1,0 +1,2 @@
+export interface Device { deviceId: number; deviceName: string; categoryId: number; labId: number; deviceSpec?: string; deviceStatus: string; buyDate?: string; price: number; categoryName?: string; labName?: string }
+export interface DeviceForm { deviceName: string; categoryId: number | undefined; labId: number | undefined; deviceSpec?: string; deviceStatus: string; buyDate?: string; price: number | undefined }

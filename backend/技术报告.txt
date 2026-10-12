@@ -1,0 +1,627 @@
+ADL实验室设备管理系统技术报告
+
+一、项目概述
+
+本系统是一个基于Spring Boot的实验室设备管理后端系统，主要完成用户、实验室、设备分类和设备信息的增删改查，并提供用户登录接口。系统采用前后端分离模式，后端以REST接口提供JSON数据，前端可以通过HTTP请求访问服务。
+
+系统总体分层如下：
+
+1. 控制层（Controller）：接收HTTP请求、解析请求参数并返回JSON结果。
+2. 业务逻辑层（Service）：封装业务操作，隔离控制层和数据访问层。
+3. 模型层（Bean/DTO）：描述业务数据和请求数据。
+4. 数据访问层（Mapper）：使用MyBatis访问MySQL数据库。
+
+主要技术栈：
+
+- Java 17
+- Spring Boot 3.4.9
+- Spring MVC（由spring-boot-starter-web提供）
+- MyBatis Spring Boot Starter 3.0.5
+- MySQL
+- Maven
+- Lombok
+- Spring AI 1.0.0及OpenAI模型适配器（当前项目已配置依赖，但尚未编写AI调用接口）
+
+
+二、技术要求
+
+（一）环境配置
+
+1. Web服务器配置
+
+项目使用Spring Boot内嵌Web服务器，不需要另外安装和配置Tomcat。运行主类后，Spring Boot会启动内嵌Tomcat并监听8080端口。
+
+配置文件src/main/resources/application.yaml中的服务器配置如下：
+
+server:
+    port: 8080
+
+启动类如下：
+
+package com.example.adl;
+
+import org.mybatis.spring.annotation.MapperScan;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@MapperScan("com.example.adl.mapper")
+@SpringBootApplication
+public class AdlApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(AdlApplication.class, args);
+    }
+}
+
+启动成功后，系统访问地址为：
+
+http://localhost:8080
+
+主要接口地址：
+
+- http://localhost:8080/user
+- http://localhost:8080/lab
+- http://localhost:8080/category
+- http://localhost:8080/device
+
+为了支持前后端分离，WebConfig配置了跨域访问：
+
+package com.example.adl.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/**")
+                .allowedOrigins("http://localhost:5173")
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                .allowedHeaders("*");
+    }
+}
+
+该配置允许运行在localhost:5173的前端应用访问后端接口，并允许GET、POST、PUT、DELETE和OPTIONS请求。
+
+2. Maven配置
+
+项目使用pom.xml管理依赖，核心配置如下：
+
+<properties>
+    <java.version>17</java.version>
+    <spring-ai.version>1.0.0</spring-ai.version>
+</properties>
+
+Spring Boot父工程：
+
+<parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.4.9</version>
+    <relativePath/>
+</parent>
+
+主要依赖：
+
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-web</artifactId>
+</dependency>
+
+<dependency>
+    <groupId>org.mybatis.spring.boot</groupId>
+    <artifactId>mybatis-spring-boot-starter</artifactId>
+    <version>3.0.5</version>
+</dependency>
+
+<dependency>
+    <groupId>com.mysql</groupId>
+    <artifactId>mysql-connector-j</artifactId>
+</dependency>
+
+<dependency>
+    <groupId>org.projectlombok</groupId>
+    <artifactId>lombok</artifactId>
+    <version>1.18.46</version>
+</dependency>
+
+项目同时引入了Spring AI：
+
+<dependency>
+    <groupId>org.springframework.ai</groupId>
+    <artifactId>spring-ai-starter-model-openai</artifactId>
+</dependency>
+
+该依赖用于将来调用OpenAI聊天模型，目前项目没有ChatClient或ChatModel的业务代码，因此Spring AI不会影响现有的设备管理CRUD功能。
+
+常用Maven命令：
+
+- mvnw spring-boot:run：启动项目
+- mvnw clean package：清理并打包
+- mvnw test：执行测试
+
+3. Spring MVC配置
+
+项目通过spring-boot-starter-web引入Spring MVC。Spring Boot自动完成DispatcherServlet、JSON消息转换器、嵌入式Tomcat和注解扫描等配置。
+
+控制器使用@RestController，表示方法返回值直接转换为JSON；使用@RequestMapping定义统一路径；使用@GetMapping、@PostMapping、@PutMapping和@DeleteMapping分别处理不同HTTP方法。
+
+请求体通过@RequestBody转换为Java对象，路径参数通过@PathVariable读取。例如：
+
+@RestController
+@RequestMapping("/device")
+public class DeviceController {
+    @Autowired
+    private DeviceService service;
+
+    @GetMapping("/{deviceId}")
+    public Device findById(@PathVariable("deviceId") Integer deviceId) {
+        return service.findById(deviceId);
+    }
+}
+
+用户登录接口使用ResponseEntity返回HTTP状态码。登录成功返回200，用户名或密码不正确返回401 Unauthorized。
+
+4. 数据访问层配置
+
+数据库使用MySQL，配置文件如下：
+
+spring:
+  datasource:
+    username: root
+    password: 123456
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3307/lab_device_db
+
+项目使用@MapperScan扫描Mapper接口：
+
+@MapperScan("com.example.adl.mapper")
+
+每个Mapper接口使用@Mapper标记，SQL语句使用MyBatis注解直接写在接口方法上。MyBatis负责参数绑定、结果映射和数据库连接管理。
+
+
+（二）控制器实现
+
+控制器位于src/main/java/com/example/adl/controller目录，当前包括UserController、LabController、DeviceCategoryController和DeviceController。
+
+1. 设备控制器
+
+@RestController
+@RequestMapping("/device")
+public class DeviceController {
+    @Autowired
+    private DeviceService service;
+
+    @GetMapping
+    public List<Device> findAll() {
+        return service.findAll();
+    }
+
+    @GetMapping("/{deviceId}")
+    public Device findById(@PathVariable("deviceId") Integer deviceId) {
+        return service.findById(deviceId);
+    }
+
+    @PostMapping
+    public Device add(@RequestBody Device device) {
+        return service.add(device);
+    }
+
+    @PutMapping("/{deviceId}")
+    public boolean update(@PathVariable("deviceId") Integer deviceId,
+                          @RequestBody Device device) {
+        return service.update(deviceId, device);
+    }
+
+    @DeleteMapping("/{deviceId}")
+    public boolean deleteById(@PathVariable("deviceId") Integer deviceId) {
+        return service.deleteById(deviceId);
+    }
+}
+
+设备接口说明：
+
+- GET /device：查询全部设备
+- GET /device/{deviceId}：根据编号查询设备
+- POST /device：新增设备
+- PUT /device/{deviceId}：修改设备
+- DELETE /device/{deviceId}：删除设备
+
+2. 用户控制器
+
+@RestController
+@RequestMapping("/user")
+public class UserController {
+    @Autowired
+    private UserService service;
+
+    @PostMapping("/login")
+    public ResponseEntity<User> login(@RequestBody LoginRequest request) {
+        User user = service.login(request.getUsername(),
+                                  request.getPassword());
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        return ResponseEntity.ok(user);
+    }
+
+    @GetMapping
+    public List<User> findAll() {
+        return service.findAll();
+    }
+
+    @GetMapping("/{userId}")
+    public User findById(@PathVariable("userId") Integer userId) {
+        return service.findById(userId);
+    }
+
+    @PostMapping
+    public User add(@RequestBody User user) {
+        return service.add(user);
+    }
+
+    @PutMapping("/{userId}")
+    public boolean update(@PathVariable("userId") Integer userId,
+                          @RequestBody User user) {
+        return service.update(userId, user);
+    }
+
+    @DeleteMapping("/{userId}")
+    public boolean deleteById(@PathVariable("userId") Integer userId) {
+        return service.deleteById(userId);
+    }
+}
+
+登录请求示例：
+
+POST /user/login
+Content-Type: application/json
+
+{
+    "username": "admin",
+    "password": "123456"
+}
+
+3. 其他控制器
+
+LabController使用/lab路径管理实验室；DeviceCategoryController使用/category路径管理设备分类。两个控制器均提供查询、新增、修改和删除操作，处理方式与DeviceController一致。
+
+控制器只负责请求和响应，不直接编写SQL，也不承担复杂业务判断，这样可以降低层之间的耦合。
+
+
+（三）业务逻辑层实现
+
+业务逻辑层位于src/main/java/com/example/adl/service及Impl目录。接口定义业务操作，Impl目录中的实现类使用@Service注册为Spring Bean，并通过依赖注入调用Mapper。
+
+1. 设备服务接口
+
+public interface DeviceService {
+    List<Device> findAll();
+    Device findById(Integer deviceId);
+    Device add(Device device);
+    boolean update(Integer deviceId, Device device);
+    boolean deleteById(Integer deviceId);
+}
+
+2. 设备服务实现
+
+@Service
+public class DeviceServiceImpl implements DeviceService {
+    @Autowired
+    private DeviceMapper mapper;
+
+    @Override
+    public List<Device> findAll() {
+        return mapper.findAll();
+    }
+
+    @Override
+    public Device findById(Integer deviceId) {
+        return mapper.findById(deviceId);
+    }
+
+    @Override
+    public Device add(Device device) {
+        mapper.insert(device);
+        return device;
+    }
+
+    @Override
+    public boolean update(Integer deviceId, Device device) {
+        device.setDeviceId(deviceId);
+        return mapper.update(device) > 0;
+    }
+
+    @Override
+    public boolean deleteById(Integer deviceId) {
+        return mapper.deleteById(deviceId) > 0;
+    }
+}
+
+LabServiceImpl、DeviceCategoryServiceImpl和UserServiceImpl采用相同的业务组织方式。UserServiceImpl另外提供login方法，调用UserMapper.findByCredentials根据账号或姓名和密码查询用户。
+
+服务层的主要职责：
+
+1. 接收控制器传来的业务参数。
+2. 调用一个或多个Mapper完成数据库操作。
+3. 在更新操作中将URL中的主键写回实体对象，避免客户端提交的主键与路径不一致。
+4. 根据受影响行数返回操作是否成功。
+5. 在需要时增加校验、事务和跨表业务规则。
+
+
+（四）模型层实现
+
+项目当前模型层包括四个数据库实体类和一个请求模型，共五个模型类，满足系统对业务对象建模的要求。
+
+1. Device实体类
+
+public class Device {
+    private Integer deviceId;
+    private String deviceName;
+    private Integer categoryId;
+    private Integer labId;
+    private String deviceSpec;
+    private String deviceStatus;
+    private LocalDate buyDate;
+    private BigDecimal price;
+    private String categoryName;
+    private String labName;
+}
+
+Device表示设备，categoryId和labId分别关联设备分类和实验室。categoryName和labName用于联表查询后直接向前端展示。
+
+2. DeviceCategory实体类
+
+public class DeviceCategory {
+    private Integer categoryId;
+    private String categoryName;
+    private String categoryDesc;
+}
+
+DeviceCategory表示设备分类。
+
+3. Lab实体类
+
+public class Lab {
+    private Integer labId;
+    private String labName;
+    private String labLocation;
+    private String labRemark;
+}
+
+Lab表示实验室。
+
+4. User实体类
+
+public class User {
+    private Integer userId;
+    private String userName;
+    private String userAccount;
+    private String userPwd;
+    private String userPhone;
+}
+
+User表示系统用户。userPwd使用@JsonProperty(access = JsonProperty.Access.WRITE_ONLY)设置为只写属性，正常返回用户信息时不会把密码序列化到JSON中。
+
+5. LoginRequest请求模型
+
+public class LoginRequest {
+    private String username;
+    private String password;
+}
+
+LoginRequest不是数据库表实体，而是登录接口专用的DTO，用于接收客户端提交的认证参数。将请求模型与User实体分开可以避免把数据库实体直接作为所有请求参数使用。
+
+项目使用Lombok的@Getter、@Setter、@NoArgsConstructor、@AllArgsConstructor和@ToString减少样板代码。MyBatis按照SQL别名或@Results完成数据库字段到Java属性的映射。
+
+
+（五）数据访问层实现
+
+数据访问层位于src/main/java/com/example/adl/mapper目录，采用MyBatis注解方式编写SQL。
+
+1. DeviceMapper核心代码
+
+@Mapper
+public interface DeviceMapper {
+
+    @Select("SELECT d.device_id AS deviceId, d.device_name AS deviceName, " +
+            "d.category_id AS categoryId, d.lab_id AS labId, " +
+            "d.device_spec AS deviceSpec, d.device_status AS deviceStatus, " +
+            "d.buy_date AS buyDate, d.price, " +
+            "c.category_name AS categoryName, l.lab_name AS labName " +
+            "FROM device d " +
+            "JOIN device_category c ON d.category_id = c.category_id " +
+            "JOIN lab l ON d.lab_id = l.lab_id " +
+            "ORDER BY d.device_id")
+    List<Device> findAll();
+
+    @Select("SELECT * FROM device WHERE device_id = #{deviceId}")
+    Device findById(Integer deviceId);
+
+    @Insert("INSERT INTO device(device_name, category_id, lab_id, " +
+            "device_spec, device_status, buy_date, price) " +
+            "VALUES (#{deviceName}, #{categoryId}, #{labId}, " +
+            "#{deviceSpec}, #{deviceStatus}, #{buyDate}, #{price})")
+    @Options(useGeneratedKeys = true,
+             keyProperty = "deviceId",
+             keyColumn = "device_id")
+    int insert(Device device);
+
+    @Update("UPDATE device SET device_name = #{deviceName}, " +
+            "category_id = #{categoryId}, lab_id = #{labId}, " +
+            "device_spec = #{deviceSpec}, device_status = #{deviceStatus}, " +
+            "buy_date = #{buyDate}, price = #{price} " +
+            "WHERE device_id = #{deviceId}")
+    int update(Device device);
+
+    @Delete("DELETE FROM device WHERE device_id = #{deviceId}")
+    int deleteById(@Param("deviceId") Integer deviceId);
+}
+
+findAll方法通过device、device_category和lab三张表联表查询，将分类名称和实验室名称一起返回。insert方法使用useGeneratedKeys，让数据库生成的主键回写到device.deviceId。
+
+2. LabMapper和DeviceCategoryMapper
+
+两类Mapper都实现以下操作：
+
+- findAll：按主键升序查询全部记录
+- findById：按照主键查询一条记录
+- insert：插入新记录并回写自增主键
+- update：按照主键更新非主键字段
+- deleteById：按照主键删除记录
+
+示例：
+
+@Mapper
+public interface LabMapper {
+    @Select("SELECT lab_id AS labId, lab_name AS labName, " +
+            "lab_location AS labLocation, lab_remark AS labRemark " +
+            "FROM lab WHERE lab_id = #{labId}")
+    Lab findById(Integer labId);
+
+    @Insert("INSERT INTO lab(lab_name, lab_location, lab_remark) " +
+            "VALUES (#{labName}, #{labLocation}, #{labRemark})")
+    @Options(useGeneratedKeys = true,
+             keyProperty = "labId",
+             keyColumn = "lab_id")
+    int insert(Lab lab);
+}
+
+3. UserMapper
+
+用户表名为user，在MySQL中属于特殊名称，因此SQL中使用反引号：
+
+@Select("SELECT user_id, user_name, user_account, user_pwd, user_phone " +
+        "FROM `user` WHERE (user_account = #{username} " +
+        "OR user_name = #{username}) AND user_pwd = #{password}")
+User findByCredentials(@Param("username") String username,
+                       @Param("password") String password);
+
+用户查询使用@Results明确映射user_id、user_name、user_account和user_phone等字段，避免数据库下划线命名与Java驼峰命名不一致造成映射错误。
+
+MyBatis的#{参数}采用预编译参数绑定，可以避免将用户输入直接拼接到SQL字符串中。
+
+
+（六）业务涉及的事务程序实现
+
+1. 当前事务情况
+
+当前项目的每个新增、修改和删除操作通常只执行一条SQL语句，由Spring/MyBatis在单次数据库操作范围内完成提交。单表CRUD不存在多个数据库操作之间的部分成功问题。
+
+但是，如果一个业务过程同时修改多张表，例如“新增实验室并初始化一条设备记录”，就必须使用事务保证原子性：所有操作成功才提交，任一操作失败则全部回滚。
+
+2. 事务注解配置
+
+在启动类增加@EnableTransactionManagement：
+
+import org.springframework.transaction.annotation.EnableTransactionManagement;
+
+@EnableTransactionManagement
+@MapperScan("com.example.adl.mapper")
+@SpringBootApplication
+public class AdlApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(AdlApplication.class, args);
+    }
+}
+
+Spring Boot通常能够自动配置事务管理器，但显式添加@EnableTransactionManagement可以清楚地表示项目启用基于注解的事务管理。
+
+3. 事务业务方法示例
+
+以下示例表示一个跨表业务：先新增实验室，再将设备保存到该实验室。两个Mapper操作必须处于同一个事务中。
+
+@Service
+public class LabDeviceService {
+    @Autowired
+    private LabMapper labMapper;
+
+    @Autowired
+    private DeviceMapper deviceMapper;
+
+    @Transactional(rollbackFor = Exception.class)
+    public Device createLabAndDevice(Lab lab, Device device) {
+        int labRows = labMapper.insert(lab);
+        if (labRows != 1 || lab.getLabId() == null) {
+            throw new IllegalStateException("实验室创建失败");
+        }
+
+        device.setLabId(lab.getLabId());
+        int deviceRows = deviceMapper.insert(device);
+        if (deviceRows != 1) {
+            throw new IllegalStateException("设备创建失败");
+        }
+        return device;
+    }
+}
+
+@Transactional的作用是：
+
+- 方法正常结束时提交事务；
+- 方法抛出Exception时回滚事务；
+- rollbackFor = Exception.class保证受检异常和运行时异常都能触发回滚；
+- 实验室插入成功但设备插入失败时，实验室记录也会被撤销。
+
+4. 事务设计注意事项
+
+1. @Transactional应放在Service层公共方法上，不应只放在Controller层。
+2. 事务方法应通过Spring代理对象调用，不能在同一个类中直接调用自身的事务方法，否则可能绕过事务代理。
+3. 涉及的MySQL表应使用支持事务的InnoDB存储引擎。
+4. 事务方法不应包含长时间的网络调用或用户交互。
+5. 删除设备分类或实验室前，应检查是否仍有设备关联，避免违反外键约束或产生孤立数据。
+6. 实际生产环境不应明文保存密码，应该使用BCrypt等算法保存密码摘要；当前项目的登录查询仍是按明文密码匹配，这是后续安全改进点。
+
+
+三、接口测试示例
+
+1. 查询所有实验室：
+
+GET http://localhost:8080/lab
+
+2. 新增设备分类：
+
+POST http://localhost:8080/category
+Content-Type: application/json
+
+{
+    "categoryName": "计算机设备",
+    "categoryDesc": "实验室计算机及相关设备"
+}
+
+3. 新增实验室：
+
+POST http://localhost:8080/lab
+Content-Type: application/json
+
+{
+    "labName": "软件工程实验室",
+    "labLocation": "教学楼A区201",
+    "labRemark": "用于软件开发实验"
+}
+
+4. 查询设备：
+
+GET http://localhost:8080/device/1
+
+5. 修改设备：
+
+PUT http://localhost:8080/device/1
+Content-Type: application/json
+
+{
+    "deviceName": "实验室服务器",
+    "categoryId": 1,
+    "labId": 1,
+    "deviceSpec": "Intel Xeon",
+    "deviceStatus": "正常",
+    "buyDate": "2025-01-01",
+    "price": 12000.00
+}
+
+
+四、总结
+
+本系统采用Spring Boot、Spring MVC、MyBatis和MySQL构建，结构清晰，控制层、业务层、模型层和数据访问层职责明确。Spring Boot负责运行环境和Web服务器自动配置；Spring MVC负责REST请求分发和JSON转换；Service层负责业务编排；MyBatis Mapper负责SQL执行和结果映射。
+
+系统已经实现用户、实验室、设备分类和设备的基础管理功能。当前单表CRUD可以正常工作，跨表业务可以通过@Transactional实现原子性。项目引入的Spring AI为后续增加设备智能问答、设备故障分析和自然语言查询等功能提供了扩展基础，但当前版本尚未实际调用AI模型。
