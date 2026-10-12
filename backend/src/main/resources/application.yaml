@@ -3,10 +3,12 @@ spring:
     name: ADL
   ai:
     openai:
-      api-key: ${SPRING_AI_OPENAI_API_KEY}
+      # DeepSeek 提供 OpenAI 兼容接口，继续使用 Spring AI OpenAI starter。
+      base-url: https://api.deepseek.com
+      api-key: ${DEEPSEEK_API_KEY}
       chat:
         options:
-          model: gpt-4o-mini
+          model: deepseek-chat
   datasource: #配置数据源
     username: root
     password: 123456

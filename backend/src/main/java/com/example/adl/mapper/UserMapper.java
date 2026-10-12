@@ -28,12 +28,13 @@ public interface UserMapper {
     List<User> findAll();
 
     // 根据主键查询用户。
-    @Select("SELECT user_id, user_name, user_account, user_phone " +
+    @Select("SELECT user_id, user_name, user_account, user_pwd, user_phone " +
             "FROM `user` WHERE user_id = #{userId}")
     @Results(id = "userByIdResultMap", value = {
             @Result(property = "userId", column = "user_id", id = true),
             @Result(property = "userName", column = "user_name"),
             @Result(property = "userAccount", column = "user_account"),
+            @Result(property = "userPwd", column = "user_pwd"),
             @Result(property = "userPhone", column = "user_phone")
     })
     User findById(Integer userId);

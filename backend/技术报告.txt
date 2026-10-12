@@ -20,7 +20,7 @@ ADL实验室设备管理系统技术报告
 - MySQL
 - Maven
 - Lombok
-- Spring AI 1.0.0及OpenAI模型适配器（当前项目已配置依赖，但尚未编写AI调用接口）
+- Spring AI 1.0.0及DeepSeek模型适配器（当前项目已配置依赖，但尚未编写AI调用接口）
 
 
 二、技术要求
@@ -133,7 +133,7 @@ Spring Boot父工程：
     <artifactId>spring-ai-starter-model-openai</artifactId>
 </dependency>
 
-该依赖用于将来调用OpenAI聊天模型，目前项目没有ChatClient或ChatModel的业务代码，因此Spring AI不会影响现有的设备管理CRUD功能。
+该依赖通过DeepSeek的OpenAI兼容接口用于将来调用DeepSeek聊天模型，目前项目没有ChatClient或ChatModel的业务代码，因此Spring AI不会影响现有的设备管理CRUD功能。
 
 常用Maven命令：
 
